@@ -17,64 +17,63 @@ jobs:
 
       - name: Check Migration Status
         id: check_status
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: cmd
         run: |
-          if [ -f "/c/mattermost_migration/migration_completed" ]; then
-            echo "✓ Database already migrated to PostgreSQL. Skipping data transfer."
-            echo "already_migrated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "⚠ Migration required."
-            echo "already_migrated=false" >> "$GITHUB_OUTPUT"
-          fi
+          IF EXIST "C:\mattermost_migration\migration_completed" (
+            echo ✓ Database already migrated to PostgreSQL. Skipping data transfer.
+            echo already_migrated=true>> %GITHUB_OUTPUT%
+          ) ELSE (
+            echo ⚠ Migration required.
+            echo already_migrated=false>> %GITHUB_OUTPUT%
+          )
 
       - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: cmd
         run: |
-          echo "Creating timestamped backup of MySQL..."
-          BACKUP_NAME="mattermost_mysql_backup_${{ github.run_id }}.sql"
-          docker exec mattermost-mysql mysqldump -u root -p${{ secrets.DB_MYSQL_ROOT_PASSWORD }} mattermost > $BACKUP_NAME
-          echo "Backup successfully saved as ${BACKUP_NAME}"
+          echo Creating timestamped backup of MySQL...
+          set BACKUP_NAME=mattermost_mysql_backup_${{ github.run_id }}.sql
+          docker exec mattermost-mysql mysqldump -u root -p${{ secrets.DB_MYSQL_ROOT_PASSWORD }} mattermost > %BACKUP_NAME%
+          echo Backup successfully saved as %BACKUP_NAME%
 
       - name: Start Target PostgreSQL
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: cmd
         run: |
-          docker compose -f ${COMPOSE_FILE} up -d db-postgres
-          echo "Waiting for PostgreSQL to initialize..."
-          sleep 10
+          docker compose -f %COMPOSE_FILE% up -d db-postgres
+          echo Waiting for PostgreSQL to initialize...
+          timeout /t 10 /nobreak >nul
 
       - name: Run pgloader (With Schema Drop for Idempotency)
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: cmd
         run: |
-          echo "Migrating schema and data from MySQL to PostgreSQL..."
-          docker run --rm --network=mattermost_network mattermost/mattermost-pgloader:latest pgloader \
-            --with "include drop" \
-            mysql://root:${{ secrets.DB_MYSQL_ROOT_PASSWORD }}@mattermost-mysql/mattermost \
-            postgresql://postgres:${{ secrets.DB_POSTGRES_PASSWORD }}@db-postgres/mattermost
+          echo Migrating schema and data from MySQL to PostgreSQL...
+          docker run --rm --network=mattermost_network mattermost/mattermost-pgloader:latest pgloader --with "include drop" mysql://root:${{ secrets.DB_MYSQL_ROOT_PASSWORD }}@mattermost-mysql/mattermost postgresql://postgres:${{ secrets.DB_POSTGRES_PASSWORD }}@db-postgres/mattermost
 
       - name: Mark Migration as Completed
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
-        run: touch /c/mattermost_migration/migration_completed
+        shell: cmd
+        run: |
+          type nul > C:\mattermost_migration\migration_completed
 
       - name: Deploy Upgraded Stack
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: cmd
         run: |
-          echo "Launching Upgraded Mattermost Stack..."
-          docker compose -f ${COMPOSE_FILE} up -d --build --remove-orphans
-          echo "Waiting for Mattermost to apply internal database updates..."
-          sleep 30
+          echo Launching Upgraded Mattermost Stack...
+          docker compose -f %COMPOSE_FILE% up -d --build --remove-orphans
+          echo Waiting for Mattermost to apply internal database updates...
+          timeout /t 30 /nobreak >nul
 
       - name: Run Health Checks & Verify Data
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: cmd
         run: |
-          echo "Running Smoke Tests..."
-          if curl -f http://localhost:8065/api/v4/system/ping; then
-            echo "Mattermost upgraded successfully and running on Postgres!"
-          else
-            echo "Application health check failed. Fetching logs..."
-            docker compose -f ${COMPOSE_FILE} logs
-            exit 1
-          fi
+          echo Running Smoke Tests...
+          curl -f http://localhost:8065/api/v4/system/ping
+          IF %ERRORLEVEL% NEQ 0 (
+            echo Application health check failed. Fetching logs...
+            docker compose -f %COMPOSE_FILE% logs
+            exit /b 1
+          ) ELSE (
+            echo Mattermost upgraded successfully and running on Postgres!
+          )
