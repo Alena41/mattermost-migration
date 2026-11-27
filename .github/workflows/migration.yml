@@ -46,6 +46,13 @@ jobs:
           echo Waiting for PostgreSQL to initialize...
           ping 127.0.0.1 -n 11 > nul
 
+      # НОВЫЙ ШАГ: Явно создаем сеть, чтобы pgloader мог к ней подключиться
+      - name: Create External Network
+        if: steps.check_status.outputs.already_migrated == 'false'
+        shell: cmd
+        run: |
+          docker network create mattermost_network || echo Network already exists
+
       - name: Run pgloader (With Schema Drop for Idempotency)
         if: steps.check_status.outputs.already_migrated == 'false'
         shell: cmd
