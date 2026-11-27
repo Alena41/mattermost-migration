@@ -15,9 +15,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+# 1. Проверка идемпотентности
       - name: Check Migration Status
         id: check_status
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe {0}' # <-- ИЗМЕНЕНО
         run: |
           if [ -f "/home/runner/.mattermost_migration_completed" ]; then
             echo "✓ Database already migrated to PostgreSQL. Skipping data transfer."
@@ -27,9 +28,10 @@ jobs:
             echo "already_migrated=false" >> $GITHUB_OUTPUT
           fi
 
+# 2. Создание резервной копии
       - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe {0}' # <-- ИЗМЕНЕНО
         run: |
           echo "Creating timestamped backup of MySQL..."
           BACKUP_NAME="mattermost_mysql_backup_${{ github.run_id }}.sql"
@@ -43,6 +45,7 @@ jobs:
 
       - name: Start Target PostgreSQL
         if: steps.check_status.outputs.already_migrated == 'false'
+        shell: 'C:\Program Files\Git\bin\bash.exe {0}' # <-- ИЗМЕНЕНО (на всякий случай)
         run: |
           docker compose -f ${COMPOSE_FILE} up -d db-postgres
           echo "Waiting for PostgreSQL to initialize..."
@@ -50,6 +53,7 @@ jobs:
 
       - name: Run pgloader (With Schema Drop for Idempotency)
         if: steps.check_status.outputs.already_migrated == 'false'
+        shell: 'C:\Program Files\Git\bin\bash.exe {0}' # <-- ИЗМЕНЕНО
         run: |
           echo "Migrating schema and data from MySQL to PostgreSQL..."
           docker run --rm --network=mattermost_network mattermost/mattermost-pgloader:latest pgloader \
@@ -59,18 +63,20 @@ jobs:
 
       - name: Mark Migration as Completed
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe {0}' # <-- ИЗМЕНЕНО
         run: touch /home/runner/.mattermost_migration_completed
 
       - name: Deploy Upgraded Stack
+        shell: 'C:\Program Files\Git\bin\bash.exe {0}' # <-- ИЗМЕНЕНО
         run: |
           echo "Launching Upgraded Mattermost Stack..."
           docker compose -f ${COMPOSE_FILE} up -d --build --remove-orphans
           echo "Waiting for Mattermost to apply internal database updates..."
           sleep 30
 
+# 7. Автоматическое тестирование
       - name: Run Health Checks & Verify Data
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe {0}' # <-- ИЗМЕНЕНО
         run: |
           echo "Running Smoke Tests..."
           if curl -f http://localhost:8065/api/v4/system/ping; then
