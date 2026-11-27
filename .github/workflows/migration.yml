@@ -15,6 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+# 1. Проверка идемпотентности: выполнялась ли миграция ранее?
       - name: Check Migration Status
         id: check_status
         shell: bash
@@ -27,6 +28,7 @@ jobs:
             echo "already_migrated=false" >> "$GITHUB_OUTPUT"
           fi
 
+# 2. Создание резервной копии MySQL перед началом работ
       - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
         shell: bash
@@ -36,6 +38,7 @@ jobs:
           docker exec mattermost-mysql mysqldump -u root -p${{ secrets.DB_MYSQL_ROOT_PASSWORD }} mattermost > $BACKUP_NAME
           echo "Backup successfully saved as ${BACKUP_NAME}"
 
+# 3. Поднятие временного контейнера PostgreSQL для приема данных
       - name: Start Target PostgreSQL
         if: steps.check_status.outputs.already_migrated == 'false'
         shell: bash
@@ -44,6 +47,7 @@ jobs:
           echo "Waiting for PostgreSQL to initialize..."
           sleep 10
 
+# 4. Гетерогенная миграция данных с помощью pgloader
       - name: Run pgloader (With Schema Drop for Idempotency)
         if: steps.check_status.outputs.already_migrated == 'false'
         shell: bash
@@ -54,11 +58,13 @@ jobs:
             mysql://root:${{ secrets.DB_MYSQL_ROOT_PASSWORD }}@mattermost-mysql/mattermost \
             postgresql://postgres:${{ secrets.DB_POSTGRES_PASSWORD }}@db-postgres/mattermost
 
+# 5. Установка маркерного флаг-файла успешной миграции
       - name: Mark Migration as Completed
         if: steps.check_status.outputs.already_migrated == 'false'
         shell: bash
         run: touch /c/mattermost_migration/migration_completed
 
+# 6. Развертывание обновленного продакшн-стека
       - name: Deploy Upgraded Stack
         shell: bash
         run: |
@@ -67,6 +73,7 @@ jobs:
           echo "Waiting for Mattermost to apply internal database updates..."
           sleep 30
 
+# 7. Автоматическое тестирование работоспособности и сохранности данных
       - name: Run Health Checks & Verify Data
         shell: bash
         run: |
