@@ -8,6 +8,10 @@ on:
 env:
   COMPOSE_FILE: docker-compose.prod.yml
 
+defaults:
+  run:
+    shell: bash # Принудительно используем Bash на Windows-раннере
+
 jobs:
   migrate-and-deploy:
     runs-on: self-hosted
@@ -15,11 +19,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. Проверка идемпотентности
+      # 1. Проверка идемпотентности (используем $USERPROFILE для Windows или $HOME для Linux)
       - name: Check Migration Status
         id: check_status
         run: |
-          if [ -f "$HOME/.mattermost_migration_completed" ]; then
+          # В bash на Windows переменная $HOME обычно указывает на C:\Users\<Username>
+          FLAG_FILE="$HOME/.mattermost_migration_completed"
+          if [ -f "$FLAG_FILE" ]; then
             echo "✓ Database already migrated to PostgreSQL. Skipping data transfer."
             echo "already_migrated=true" >> "$GITHUB_OUTPUT"
           else
@@ -27,7 +33,7 @@ jobs:
             echo "already_migrated=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # 2. Бэкап MySQL
+      # 2. Создание резервной копии MySQL
       - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
@@ -35,16 +41,17 @@ jobs:
         run: |
           echo "💾 Creating timestamped backup of MySQL..."
           BACKUP_NAME="mattermost_mysql_backup_${GITHUB_RUN_ID}.sql"
+          
+          # Проверяем, запущен ли контейнер
           if docker ps --format '{{.Names}}' | grep -q "^mattermost-mysql$"; then
-            docker exec mattermost-mysql \
-              mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" mattermost > "${BACKUP_NAME}"
-            echo "✅ Backup saved as ${BACKUP_NAME}"
+            docker exec mattermost-mysql mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" mattermost > "${BACKUP_NAME}"
+            echo "✅ Backup successfully saved as ${BACKUP_NAME}"
           else
             echo "❌ Error: Legacy MySQL container is not running!"
             exit 1
           fi
 
-      # 3. Поднятие PostgreSQL
+      # 3. Поднятие временного контейнера PostgreSQL
       - name: Start Target PostgreSQL
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
@@ -52,9 +59,9 @@ jobs:
         run: |
           docker compose -f "${COMPOSE_FILE}" up -d db-postgres
           echo "⏳ Waiting for PostgreSQL to initialize..."
-          sleep 10
+          sleep 15
 
-      # 4. Миграция данных
+      # 4. Гетерогенная миграция данных с помощью pgloader
       - name: Run pgloader (With Schema Drop for Idempotency)
         if: steps.check_status.outputs.already_migrated == 'false'
         env:
@@ -62,28 +69,33 @@ jobs:
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
           echo "🔄 Migrating schema and data from MySQL to PostgreSQL..."
+          
+          # Используем официальный образ pgloader от Mattermost
           docker run --rm --network=mattermost_network \
             mattermost/mattermost-pgloader:latest pgloader \
             --with "include drop" \
             "mysql://root:${MYSQL_ROOT_PASSWORD}@mattermost-mysql/mattermost" \
             "postgresql://postgres:${DB_POSTGRES_PASSWORD}@mattermost-postgres/mattermost"
 
-      # 5. Флаг-файл
+      # 5. Установка маркерного флаг-файла
       - name: Mark Migration as Completed
         if: steps.check_status.outputs.already_migrated == 'false'
-        run: touch "$HOME/.mattermost_migration_completed"
+        run: |
+          touch "$HOME/.mattermost_migration_completed"
+          echo "✅ Migration flag created."
 
-      # 6. Деплой
+      # 6. Развертывание обновленного продакшн-стека
       - name: Deploy Upgraded Stack
         env:
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
           echo "🚀 Launching Upgraded Mattermost Stack..."
+          # --remove-orphans удалит старый контейнер MySQL
           docker compose -f "${COMPOSE_FILE}" up -d --build --remove-orphans
           echo "⏳ Waiting for Mattermost to apply internal database updates..."
           sleep 30
 
-      # 7. Health check
+      # 7. Автоматическое тестирование работоспособности
       - name: Run Health Checks & Verify Data
         run: |
           echo "🔍 Running Smoke Tests..."
