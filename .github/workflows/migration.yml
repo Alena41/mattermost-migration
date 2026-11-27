@@ -17,6 +17,7 @@ jobs:
 
       - name: Check Migration Status
         id: check_status
+        shell: bash
         run: |
           if [ -f "/home/runner/.mattermost_migration_completed" ]; then
             echo "✓ Database already migrated to PostgreSQL. Skipping data transfer."
@@ -28,6 +29,7 @@ jobs:
 
       - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
+        shell: bash
         run: |
           echo "Creating timestamped backup of MySQL..."
           BACKUP_NAME="mattermost_mysql_backup_${{ github.run_id }}.sql"
@@ -57,6 +59,7 @@ jobs:
 
       - name: Mark Migration as Completed
         if: steps.check_status.outputs.already_migrated == 'false'
+        shell: bash
         run: touch /home/runner/.mattermost_migration_completed
 
       - name: Deploy Upgraded Stack
@@ -67,6 +70,7 @@ jobs:
           sleep 30
 
       - name: Run Health Checks & Verify Data
+        shell: bash
         run: |
           echo "Running Smoke Tests..."
           if curl -f http://localhost:8065/api/v4/system/ping; then
