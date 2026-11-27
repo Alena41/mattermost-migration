@@ -50,7 +50,7 @@ jobs:
         if: steps.check_status.outputs.already_migrated == 'false'
         shell: cmd
         run: |
-          docker network create mattermost_network || echo Network already exists
+          docker network create mattermost_network || ver > nul
 
       - name: Run pgloader (With Schema Drop for Idempotency)
         if: steps.check_status.outputs.already_migrated == 'false'
