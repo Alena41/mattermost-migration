@@ -42,11 +42,10 @@ jobs:
         env:
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
-          docker compose -f %COMPOSE_FILE% up -d db-postgres
+          docker compose -f %COMPOSE_FILE% up -d --network mattermost_network db-postgres
           echo Waiting for PostgreSQL to initialize...
           ping 127.0.0.1 -n 11 > nul
 
-      # НОВЫЙ ШАГ: Явно создаем сеть, чтобы pgloader мог к ней подключиться
       - name: Create External Network
         if: steps.check_status.outputs.already_migrated == 'false'
         shell: cmd
