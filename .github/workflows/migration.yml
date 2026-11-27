@@ -17,7 +17,7 @@ jobs:
 
       - name: Check Migration Status
         id: check_status
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: bash
         run: |
           if [ -f "/c/mattermost_migration/migration_completed" ]; then
             echo "✓ Database already migrated to PostgreSQL. Skipping data transfer."
@@ -29,7 +29,7 @@ jobs:
 
       - name: Backup Legacy MySQL
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: bash
         run: |
           echo "Creating timestamped backup of MySQL..."
           BACKUP_NAME="mattermost_mysql_backup_${{ github.run_id }}.sql"
@@ -38,7 +38,7 @@ jobs:
 
       - name: Start Target PostgreSQL
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: bash
         run: |
           docker compose -f ${COMPOSE_FILE} up -d db-postgres
           echo "Waiting for PostgreSQL to initialize..."
@@ -46,7 +46,7 @@ jobs:
 
       - name: Run pgloader (With Schema Drop for Idempotency)
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: bash
         run: |
           echo "Migrating schema and data from MySQL to PostgreSQL..."
           docker run --rm --network=mattermost_network mattermost/mattermost-pgloader:latest pgloader \
@@ -56,11 +56,11 @@ jobs:
 
       - name: Mark Migration as Completed
         if: steps.check_status.outputs.already_migrated == 'false'
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: bash
         run: touch /c/mattermost_migration/migration_completed
 
       - name: Deploy Upgraded Stack
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: bash
         run: |
           echo "Launching Upgraded Mattermost Stack..."
           docker compose -f ${COMPOSE_FILE} up -d --build --remove-orphans
@@ -68,7 +68,7 @@ jobs:
           sleep 30
 
       - name: Run Health Checks & Verify Data
-        shell: 'C:\Program Files\Git\bin\bash.exe {0}'
+        shell: bash
         run: |
           echo "Running Smoke Tests..."
           if curl -f http://localhost:8065/api/v4/system/ping; then
