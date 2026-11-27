@@ -39,10 +39,12 @@ jobs:
       - name: Start Target PostgreSQL
         if: steps.check_status.outputs.already_migrated == 'false'
         shell: cmd
+        env:
+          DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
           docker compose -f %COMPOSE_FILE% up -d db-postgres
           echo Waiting for PostgreSQL to initialize...
-          timeout /t 10 /nobreak >nul
+          ping 127.0.0.1 -n 11 > nul
 
       - name: Run pgloader (With Schema Drop for Idempotency)
         if: steps.check_status.outputs.already_migrated == 'false'
@@ -59,11 +61,13 @@ jobs:
 
       - name: Deploy Upgraded Stack
         shell: cmd
+        env:
+          DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
           echo Launching Upgraded Mattermost Stack...
           docker compose -f %COMPOSE_FILE% up -d --build --remove-orphans
           echo Waiting for Mattermost to apply internal database updates...
-          timeout /t 30 /nobreak >nul
+          ping 127.0.0.1 -n 31 > nul
 
       - name: Run Health Checks & Verify Data
         shell: cmd
