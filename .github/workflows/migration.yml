@@ -42,7 +42,7 @@ jobs:
         env:
           DB_POSTGRES_PASSWORD: ${{ secrets.DB_POSTGRES_PASSWORD }}
         run: |
-          docker compose -f %COMPOSE_FILE% up -d --network mattermost_network db-postgres
+          docker compose -f %COMPOSE_FILE% up -d db-postgres
           echo Waiting for PostgreSQL to initialize...
           ping 127.0.0.1 -n 11 > nul
 
